@@ -141,8 +141,7 @@ class Point:
     # end::source1[]
 
     def __ne__(self, other):
-        # this should be the inverse of the == operator
-        raise NotImplementedError
+        return not self == other
 
     def __repr__(self):
         if self.x is None:
@@ -156,6 +155,8 @@ class Point:
             raise TypeError('Points {}, {} are not on the same curve'.format
             (self, other))
 
+        # Elliptic curve identity: point at infinity - any point added to the identity
+        #   is itself. Point at infinity represented with x and y values of None.
         if self.x is None:  # <3>
             return other
         if other.x is None:  # <4>
@@ -163,22 +164,34 @@ class Point:
         # end::source3[]
 
         # Case 1: self.x == other.x, self.y != other.y
+        # Vertical line, intersection at two points
         # Result is point at infinity
-
+        if self.x == other.x and self.y != other.y:
+            return self.__class__(None, None, self.a, self.b)
+    
         # Case 2: self.x ≠ other.x
+        # Common case of intersection at three points (also one? or is that adding to identity?)
         # Formula (x3,y3)==(x1,y1)+(x2,y2)
         # s=(y2-y1)/(x2-x1)
         # x3=s**2-x1-x2
         # y3=s*(x1-x3)-y1
+        if self.x != other.x:
+            s = (other.y - self.y) / (other.x - self.x)  # slope
+            x = s**2 - self.x - other.x
+            y = s * (self.x - x) - self.y
+            return self.__class__(x, y, self.a, self.b)
 
         # Case 3: self == other
+        # Line is tangent to the curve, intersecting at two points
         # Formula (x3,y3)=(x1,y1)+(x1,y1)
         # s=(3*x1**2+a)/(2*y1)
         # x3=s**2-2*x1
         # y3=s*(x1-x3)-y1
-
-        raise NotImplementedError
-
+        if self == other:
+            s = (3 * self.x**2 + self.a) / (2 * self.y)  # slope
+            x = s**2 - 2 * self.x
+            y = s * (self.x - x) - self.y
+            return self.__class__(x, y, self.a, self.b)
 
 class PointTest(TestCase):
 
