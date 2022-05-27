@@ -11,6 +11,7 @@ from unittest import TestCase
 from unittest import main
 import ecc
 FiniteFieldElem = ecc.FiniteFieldElem
+ECPoint = ecc.ECPoint
 
 
 class TestFiniteFieldElem(TestCase):
@@ -125,6 +126,32 @@ class TestFiniteFieldElem(TestCase):
         self.assertRaises(TypeError, FiniteFieldElem.__truediv__, a, 2)
         # a /f b == a /f (b **f (p - 2))
         self.assertEqual(a / b, FiniteFieldElem(4, 31))
+
+
+class ECPointTest(TestCase):
+
+    def test_ne(self):
+        a = ECPoint(x=3, y=-7, a=5, b=7)
+        b = ECPoint(x=18, y=77, a=5, b=7)
+        self.assertTrue(a != b)
+        self.assertFalse(a != a)
+
+    def test_add0(self):
+        a = ECPoint(x=None, y=None, a=5, b=7)
+        b = ECPoint(x=2, y=5, a=5, b=7)
+        c = ECPoint(x=2, y=-5, a=5, b=7)
+        self.assertEqual(a + b, b)
+        self.assertEqual(b + a, b)
+        self.assertEqual(b + c, a)
+
+    def test_add1(self):
+        a = ECPoint(x=3, y=7, a=5, b=7)
+        b = ECPoint(x=-1, y=-1, a=5, b=7)
+        self.assertEqual(a + b, ECPoint(x=2, y=-5, a=5, b=7))
+
+    def test_add2(self):
+        a = ECPoint(x=-1, y=-1, a=5, b=7)
+        self.assertEqual(a + a, ECPoint(x=18, y=77, a=5, b=7))
 
 
 if __name__ == '__main__':
