@@ -281,19 +281,17 @@ class ECCTest(TestCase):
         prime = 223
         a = FieldElement(0, prime)
         b = FieldElement(7, prime)
-
         additions = (
             # (x1, y1, x2, y2, x3, y3)
             (192, 105, 17, 56, 170, 142),
             (47, 71, 117, 141, 60, 139),
             (143, 98, 76, 66, 47, 71),
         )
-
-        # loop over additions
-        # initialize x's and y's as FieldElements
-        # create p1, p2 and p3 as Points
-        # check p1+p2==p3
-        raise NotImplementedError
+        for coords in additions:
+            p1 = Point(FieldElement(coords[0], prime), FieldElement(coords[1], prime), a, b)
+            p2 = Point(FieldElement(coords[2], prime), FieldElement(coords[3], prime), a, b)
+            self.assertEqual(p1 + p2, Point(FieldElement(coords[4], prime),
+                                            FieldElement(coords[5], prime), a, b))
 
     def test_rmul(self):
         # tests the following scalar multiplications
@@ -376,6 +374,8 @@ class S256Point(Point):
 
     # tag::source8[]
     def __rmul__(self, coefficient):
+        # mod N, as nG == infinity point == "0", and since the scalar multiplication is
+        #   treated like serial addition, only the modulus matters
         coef = coefficient % N  # <1>
         return super().__rmul__(coef)
     # end::source8[]
