@@ -1,9 +1,8 @@
 #!/usr/bin/python3
-
 """`ecc` - Elliptic Curve Cryptography module
 
 Contains classes and constants necessary for implementing an educational mockup
-of the secp256k1 ECC and ECDSA used in the Bitcoin mainnet.
+of the secp256k1 ECC and ECDSA used in Bitcoin circa 2019.
 
 Modified from original repository developed by Jimmy Song for his book
 Programming Bitcoin, O'Reilly Media Inc, March 2019. See
@@ -12,10 +11,14 @@ https://github.com/jimmysong/programmingbitcoin
 """
 from collections import namedtuple
 from hashlib import sha256
+from io import BytesIO
+
 import hmac
 
+from helper import encode_base58_checksum, hash160
 
-class FiniteFieldElem:
+
+class FinFieldElem:
     """Representation of a finite field element.
 
     A value in a set of integers from 0 to a prime - 1, for which arithmetic
@@ -29,29 +32,30 @@ class FiniteFieldElem:
 
     """
     def __init__(self, num, prime):
-        """Instantiate a FiniteFieldElem object.
+        """Instantiates a FinFieldElem object.
 
         Args:
             num   (int): finite field member
             prime (int): finite field order
 
-        Note:
-            Currently there is no validation of prime as a prime number,
-            ideally a ValueError would be thrown if not.
-
         """
+        # Song p.76, in Compressed SEC Format section: prime cannot be 2
+        if prime < 3:
+            raise ValueError('prime must be greater than 2')
+        # While it would be costly to validate prime as a prime number,
+        #    ideally that would also be enforced with a ValueError
         if num >= prime or num < 0:
             raise ValueError(
-                'Num {} not in field range 0 to {}'.format(
+                'num {} not in field range 0 to {}'.format(
                     num, prime - 1))
         self.num = num
         self.prime = prime
 
     def __repr__(self):
-        """Generates string representation of FiniteFieldElem.
+        """Generates string representation of FinFieldElem.
 
         Returns:
-            (str): representation of self
+            (str): developer-oriented representation of self
 
         """
         return '{}_{}({})'.format(self.__class__, self.prime, self.num)
@@ -91,7 +95,7 @@ class FiniteFieldElem:
             other (self.__class__): element to add
 
         Returns:
-            (self.__class__): sum of elements
+            self.__class__: sum of elements
 
         """
         if type(other) is not self.__class__ or self.prime != other.prime:
@@ -106,7 +110,7 @@ class FiniteFieldElem:
             other (self.__class__): element to subtract
 
         Returns:
-            (self.__class__): difference of elements
+            self.__class__: difference of elements
 
         """
         if type(other) is not self.__class__ or self.prime != other.prime:
@@ -122,7 +126,7 @@ class FiniteFieldElem:
             other (self.__class__): multiplier element
 
         Returns:
-            (self.__class__): product of elements
+            self.__class__: product of elements
 
         """
         if type(other) is not self.__class__ or self.prime != other.prime:
@@ -138,7 +142,7 @@ class FiniteFieldElem:
             other (int): exponent (only base needs to be inside the field)
 
         Returns:
-            (self.__class__): product of elements
+            self.__class__: product of elements
 
         """
         # Fermat's Little Theorem: a**(P-1) = 1, so only the modulo matters.
@@ -171,7 +175,7 @@ class FiniteFieldElem:
             other (self.__class__): divisor element
 
         Returns:
-            (self.__class__): quotient of elements
+            self.__class__: quotient of elements
 
         """
         if type(other) is not self.__class__ or self.prime != other.prime:
@@ -223,22 +227,22 @@ class ECPoint:
     the infinity point. n + 1 is the order of the group (see __rmul__.)
 
     Attributes:
-        a (int/FiniteFieldElem): first constant
-        b (int/FiniteFieldElem): second constant
-        x (int/FiniteFieldElem): x coordinate
-        y (int/FiniteFieldElem): y coordinate
+        a (int/FinFieldElem): first constant
+        b (int/FinFieldElem): second constant
+        x (int/FinFieldElem): x coordinate
+        y (int/FinFieldElem): y coordinate
 
     """
     def __init__(self, x, y, a, b):
         """Instantiate an ECPoint object.
 
         Args:
-            a (int/FiniteFieldElem): first constant
-            b (int/FiniteFieldElem): second constant
-            x (int/FiniteFieldElem): x coordinate
-            y (int/FiniteFieldElem): y coordinate
+            a (int/FinFieldElem): first constant
+            b (int/FinFieldElem): second constant
+            x (int/FinFieldElem): x coordinate
+            y (int/FinFieldElem): y coordinate
 
-        """
+       """
         # No need to evaluate infinity point (None, None)
         if x is not None and y is not None and y**2 != x**3 + a * x + b:
             raise ValueError('({}, {}) is not on the curve'.format(x, y))
@@ -248,10 +252,10 @@ class ECPoint:
         self.y = y
 
     def __repr__(self):
-        """Generates string representation of elliptic curve point.
+        """Generates string representation of ECPoint.
 
         Returns:
-            (str): representation of self
+            str: developer-oriented representation of self
 
         """
         if self.x is None:
@@ -288,8 +292,9 @@ class ECPoint:
     def __add__(self, other):
         """Adds one elliptic curve point to another.
 
-        Any two elliptic curve points and their sum point can be considered as
-        a line intersecting the curve. These lines come in several varieties:
+        Using the curve over real numbers as an example, any two elliptic curve
+        points and their sum point can be visualized as describing a line
+        intersecting the curve. These lines come in several varieties:
 
             Intersecting at three points:
                 The sum of the points is the third intersection of the curve by
@@ -311,7 +316,7 @@ class ECPoint:
             other (self.__class__): point to add
 
         Returns:
-            (self.__class__): sum of points
+            self.__class__: sum of points
 
         """
         if self.a != other.a or self.b != other.b:
@@ -347,14 +352,14 @@ class ECPoint:
     def __rmul__(self, coefficient):
         """Scalar multiplication of elliptic curve point, from right to left.
 
-        Multiplication of a point can here be considered serial addition,
-        but is expedited by using binary expansion.
+        Multiplication of a point can here be considered serial addition, but
+        is expedited by using binary expansion.
 
         Args:
             coefficient (int): scalar to multiply EC point
 
         Returns:
-            ECPoint: product of elliptic curve point and coefficient
+            self.__class__: product of elliptic curve point and coefficient
 
         """
         coef = coefficient
@@ -399,36 +404,73 @@ used in Bitcoin.
 """
 
 
-class S256FieldElem(FiniteFieldElem):
+class S256FieldElem(FinFieldElem):
     """A secp256k1 finite field element.
 
+    Attributes:
+        P (int): secp256k1 finite field order, or 2**256 - 2**32 - 977
+
     """
+    P = SECP256K1.P
+
     def __init__(self, num, prime=None):
         """Instantiate a S256FieldElem object.
 
         Args:
-            num   (int): finite field member
+            num (int): finite field member
 
         """
-        super().__init__(num=num, prime=SECP256K1.P)
+        super().__init__(num=num, prime=self.P)
 
     def __repr__(self):
         """Generates string representation of S256FieldElem.
 
         Returns:
-            (str): representation of self
+            str: developer-oriented representation of self
 
         """
         return '{:x}'.format(self.num).zfill(64)
+
+    def sqrt(self):
+        """Derives square root of a secp256k1 finite field element.
+
+        One of the characteristics of secp256k1 is that P % 4 = 3, so
+        (P + 1) % 4 = 0, thus (P + 1)/4 is an integer.
+
+        Looking for the square root, or w**2 = v, can be transformed via
+        Fermat's Little Theorem to w**(P - 1) % P = 1, so:
+
+            w**2 = w**2 * 1 = w**2 * w**(P - 1) = w**(P + 1)
+
+        Any prime greater than 2 divided 2 mod P should equal an integer, so
+        for w**2 = w**(P + 1) we can divide both exponents by 2 to get
+        w = w**(P + 1)/2.
+
+        Further, if (P + 1)/4 is established to be an integer, then:
+
+            w = w**(P + 1)/2 = w**2(P + 1)/4 = (w**2)**(P + 1)/4 = v**(P+1)/4,
+                or w = v**(P + 1)/4 if P % 4 = 3
+
+        Returns:
+            self.__class__: square root of self
+
+        """
+        return self**((self.P + 1) // 4)
 
 
 class S256Point(ECPoint):
     """Representation of a point on the elliptic curve secp256k1.
 
+    The a and b values used for this curve simplify y**2 = x**3 + x*a + b to:
+
+        y**2 = x**3 + 7
+
     Attributes:
         A (int): first secp256k1 elliptic curve constant
         B (int): second secp256k1 elliptic curve constant
         N (int): secp256k1 group order
+        x (S256FieldElem): x coordinate of point
+        y (S256FieldElem): y coordinate of point
 
     """
     A = SECP256K1.A
@@ -439,8 +481,8 @@ class S256Point(ECPoint):
         """Instantiate a S256Point object.
 
         Args:
-            x (int/S256FieldElement): x coordinate
-            y (int/S256FieldElement): y coordinate
+            x (int/S256FieldElem): x coordinate
+            y (int/S256FieldElem): y coordinate
 
         """
         a, b = S256FieldElem(self.A), S256FieldElem(self.B)
@@ -454,7 +496,7 @@ class S256Point(ECPoint):
         """Generates string representation of S256Point.
 
         Returns:
-            (str): representation of self
+            str: developer-oriented representation of self
 
         """
         if self.x is None:
@@ -503,6 +545,7 @@ class PublicKey(S256Point):
     # super() does not work outside methods
     G = S256Point(SECP256K1.Gx, SECP256K1.Gy)
 
+    # TBD:
     # Originally defined __init__ to prevent creating public keys == infinity
     #   point, but this caused failure when verify_sig's `v * self` eventually
     #   calls ECPoint.__rmul__, and `product = self.__class__(None, None,
@@ -512,13 +555,13 @@ class PublicKey(S256Point):
         """Generates string representation of PublicKey.
 
         Returns:
-            (str): representation of self
+            (str): developer-oriented representation of self
 
         """
         return 'PublicKey({}, {})'.format(self.x, self.y)
 
-    def verify_sig(self, z, sig):
-        """Verifies a secp256k1 ECDSA signature when point is a public key.
+    def verify(self, z, sig):
+        """Verifies a secp256k1 ECDSA signature made with the same public key.
 
         Added to Song's code are two safety checks from:
         https://en.bitcoin.it/wiki/Elliptic_Curve_Digital_Signature_Algorithm.
@@ -550,6 +593,124 @@ class PublicKey(S256Point):
             return False
         return R.x.num == sig.r
 
+    def sec(self, compressed=True):
+        """Encodes a public key in compressed or uncompressed SEC format.
+
+        SEC, for Standards for Efficient Cryptography, is the standard for
+        serializing ECDSA public keys, see:
+        https://secg.org/sec1-v2.pdf#subsubsection.2.3.3
+
+        Uncompressed SEC format can be encoded like so:
+            1. Start with prefix byte 0x04
+            2. Append the pubkey x coordinate (32 bytes big endian)
+            3. Append the pubkey y coordinate (32 bytes big endian)
+
+        The format can alternatively be compressed by leveraging some
+        characteristics of elliptic curves and finite fields. We know y can
+        can be computed from x with the elliptic curve formula, which for
+        secp256k1 simplifies to y**2 == x**3 + 7. So for any given x, there can
+        only either be one or two y values, which for the curve across real
+        numbers, would be y and -y.
+
+        However, since this is over a finite field, instead we could consider
+        them as y % P and (P - y) % P. Differentiating these two now becomes a
+        matter of evenness rather than sign. As a prime greater than 2, P must
+        be odd, so if y is even, p - y is odd, and if y is odd, p - y is even.
+
+        So when data size is a consideration, only the x coordinate and the
+        evenness of y are needed - compressed SEC is encoded like so:
+            1. Prefix byte: 0x02 if y is even, 0x03 if y is odd
+            2. Append pubkey x coordinate in 32-byte big endian
+
+        Args:
+            compressed (bool): use compressed format if True, otherwise
+                uncompressed
+
+        Returns:
+            bytes: SEC encoded public key
+
+        """
+        if compressed:
+            if self.y.num % 2 == 0:
+                return b'\x02' + self.x.num.to_bytes(32, 'big')
+            else:
+                return b'\x03' + self.x.num.to_bytes(32, 'big')
+        else:
+            return b'\x04' + self.x.num.to_bytes(32, 'big') + \
+                self.y.num.to_bytes(32, 'big')
+
+    @classmethod
+    def from_sec(self, sec_bin):
+        """Parses a public key from a SEC-formatted byte sequence.
+
+        See PublicKey.sec for description of SEC encoding format.
+
+        Args:
+            sec_bin (bytes): public key in SEC encoded bytes
+
+        Returns:
+            self.__class__: deserialized public key
+
+        """
+        compressed = True
+        if sec[0] == 0x04:  # b'\x04'
+            compressed = False
+        elif sec[0] == 0x02:  # b'\x02'
+            y_even = True
+        elif sec[0] == 0x03:  # b'\x03'
+            y_even = False
+        else:
+            raise ValueError("Invalid SEC prefix byte of {:x}".format(sec[0]))
+        x = S256FieldElem(int.from_bytes(sec[1:33], 'big'))
+        if not compressed:
+            return S256Point(
+                x=x, y=S256FieldElem(int.from_bytes(sec[33:65], 'big')))
+        # right side of the equation y**2 = x**3 + 7
+        alpha = x**3 + S256FieldElem(self.B)
+        # solve for left side
+        beta = alpha.sqrt()
+        if beta.num % 2 == 0:
+            even_beta = beta
+            odd_beta = S256FieldElem(S256FieldElem.P - beta.num)
+        else:
+            even_beta = S256FieldElem(S256FieldElem.P - beta.num)
+            odd_beta = beta
+        return self.__init__(x=x, y=even_beta if y_even else odd_beta)
+
+    def address(self, compressed=True, testnet=False):
+        """Encodes a public key in Bitcoin address format.
+
+        Bitcoin address format is a shortened and obfuscated form of a public
+        key, used as a party identifier in transactions.
+
+        Bitcoin addresses are serialized as follows:
+            1. For mainnet prefix 0x00, testnet 0x6f
+            2. Create a hash160 of the public key (key in SEC format > sha256 >
+                ripemd160)
+            3. Combine #1 and #2
+            4. Take first four bytes of hash256 (sha256 twice) of #3
+            5. Encode #3 and #4 in base58
+
+        Note: Given the variables above, up to 4 addresses could be derived
+        from a single public key.
+
+        Args:
+            compressed (bool): use compressed SEC format if True, otherwise
+                uncompressed
+            testnet (bool): address for testnet if True, otherwise for mainnet
+
+        Returns:
+            str: address value in base 58 encoded string
+
+        """
+        h160 = hash160(self.sec(compressed))
+        prefix = b'\x6f' if testnet else b'\x00'
+        return encode_base58_checksum(prefix + h160)
+
+    # TBD
+    # @classmethod
+    # def from_address(address):
+
 
 class Signature:
     """Contains values derived from signing a message with the ECDSA
@@ -577,10 +738,81 @@ class Signature:
         """Generates string representation of Signature.
 
         Returns:
-            (str): representation of self
+            str: developer-oriented representation of self
 
         """
         return 'Signature({:x},{:x})'.format(self.r, self.s)
+
+    def der(self):
+        """Encodes a signature in DER format.
+
+        DER, or Distinguished Encoding Rules, is likely taken from early
+        Bitcoin's use of OpenSSL, and is still used to encode signatures.
+
+        Both r and s need to be encoded, as s cannot solely be derived from r.
+        DER can be sequenced as follows:
+            1. Prefix of 0x30
+            2. Length of the encoded signature to follow, in bytes (always
+                single byte, so endianness not relevant)
+            3. Marker byte 0x02
+            4. r in big-endian, with minimum amount of leading null bytes
+                necessary to prevent the vaue being interpreted as negative.
+                Prepend length of resulting value in bytes.
+            5. Marker byte 0x02
+            6. s in big-endian, with minimum amount of leading null bytes
+                necessary to prevent the vaue being interpreted as negative.
+                Prepend length of resulting value in bytes.
+
+        Returns:
+            bytes: DER encoded signature
+
+        """
+        rbin = self.r.to_bytes(32, byteorder='big')
+        sbin = self.s.to_bytes(32, byteorder='big')
+        result = b''
+        for _bin in (rbin, sbin):
+            # remove all null bytes at the beginning
+            _bin = _bin.lstrip(b'\x00')
+            # add back null byte if stripped bytes interpreted as negative
+            if _bin[0] & 0x80:
+                _bin = b'\x00' + _bin
+            # add prefix byte and length in bytes
+            result += bytes([0x02, len(_bin)]) + _bin
+        return bytes([0x30, len(result)]) + result
+
+    @classmethod
+    def from_der(cls, signature_bin):
+        """Decodes a signature from DER encoding.
+
+        See Signature.der for a description of the DER format.
+
+        Args:
+            signature_bin (bytes): DER encoded signature
+
+        Returns:
+            self.__class__: deserialized signature
+
+        """
+        s = BytesIO(signature_bin)
+        compound = s.read(1)[0]
+        if compound != 0x30:
+            raise SyntaxError("Bad Signature")
+        length = s.read(1)[0]
+        if length + 2 != len(signature_bin):
+            raise SyntaxError("Bad Signature Length")
+        marker = s.read(1)[0]
+        if marker != 0x02:
+            raise SyntaxError("Bad Signature")
+        rlength = s.read(1)[0]
+        r = int.from_bytes(s.read(rlength), 'big')
+        marker = s.read(1)[0]
+        if marker != 0x02:
+            raise SyntaxError("Bad Signature")
+        slength = s.read(1)[0]
+        s = int.from_bytes(s.read(slength), 'big')
+        if len(signature_bin) != 6 + rlength + slength:
+            raise SyntaxError("Signature too long")
+        return cls(r, s)
 
 
 class PrivateKey:
@@ -589,8 +821,8 @@ class PrivateKey:
     Attributes:
         N (int):             secp256k1 group order
         G (S256Point):       secp256k1 group generator point
-        e (int):             private key; e in eG = P
-        pub_key (S256Point): public key; P in eG = P
+        secret (int):        private key; e in eG = P
+        point (S256Point): public key; P in eG = P
 
     """
     N = SECP256K1.N
@@ -603,9 +835,9 @@ class PrivateKey:
             secret (int): scalar to mulitply generator point
 
         """
-        self.e = secret
-        eG = self.e * self.G
-        self.pub_key = PublicKey(eG.x, eG.y)
+        self.secret = secret
+        eG = self.secret * self.G
+        self.point = PublicKey(eG.x, eG.y)
 
     def hex(self):
         """Represent private key as hexadecimal string.
@@ -614,7 +846,7 @@ class PrivateKey:
             str: private key as 64 digit zero-padded hex string
 
         """
-        return '{:x}'.format(self.e).zfill(64)
+        return '{:x}'.format(self.secret).zfill(64)
 
     def sign(self, z):
         """Generate an ECDSA secp256k1 signature for a message hash.
@@ -648,7 +880,7 @@ class PrivateKey:
         # Fermat's Little Theorem: 1/k == pow(k, N-2, N)
         k_inv = pow(k, self.N - 2, self.N)
         # s = (z + r*e)/k
-        s = (z + r * self.e) * k_inv % self.N
+        s = (z + r * self.secret) * k_inv % self.N
         # BTC wiki: ECDSA: need 0 < s < N:
         #   if s = 0, generate another random k and start over
         # TBD: Is this why Song makes this last modification of s? ch03 p70:
@@ -661,9 +893,10 @@ class PrivateKey:
     def deterministic_k(self, z):
         """Derives a k value using a hash of the message and a private key.
 
-        ECDSA requires k values that are pseudorandom, but also unique to each
-        signature. Here a deterministic k is generated with an algorithm
-        specified in RFC 6979 (see https://tools.ietf.org/html/rfc6979).
+        ECDSA requires k values that are pseudorandom, and keeping the
+        private key secret requires a unique k for each signature. Here a
+        deterministic k is generated with an algorithm specified in
+        RFC 6979 (see https://tools.ietf.org/html/rfc6979).
 
         Args:
             z (int): expects a 32-byte sha256 hash of the data to sign
@@ -677,7 +910,7 @@ class PrivateKey:
         if z > self.N:
             z -= self.N
         z_bytes = z.to_bytes(32, 'big')
-        secret_bytes = self.e.to_bytes(32, 'big')
+        secret_bytes = self.secret.to_bytes(32, 'big')
         k = hmac.new(k, v + b'\x00' + secret_bytes + z_bytes, sha256).digest()
         v = hmac.new(k, v, sha256).digest()
         k = hmac.new(k, v + b'\x01' + secret_bytes + z_bytes, sha256).digest()
@@ -689,3 +922,32 @@ class PrivateKey:
                 return candidate
             k = hmac.new(k, v + b'\x00', sha256).digest()
             v = hmac.new(k, v, sha256).digest()
+
+    def wif(self, compressed=True, testnet=False):
+        """Encodes private key in WIF.
+
+        WIF, or Wallet Import Format, is Bitcoin's current means of serializing
+        private keys, see:
+        https://en.bitcoin.it/wiki/Wallet_import_format
+
+        WIF can be serialized as follows. Note that the process requires
+        awareness of the SEC compression used in whatever address is paired
+        with private key:
+            1. Prefix of 0x80 for mainnet, 0xef for testnet
+            2. Secret encoded in 32 byte big endian
+            3. If SEC for public key was compressed, use suffix 0x01
+            4. Combine #1, #2, and #3
+            5. Take first 4 bytes of hash256 (sha256 twice) of #4
+            6. Encode #4 and #5 in base 58.
+
+        """
+        secret_bytes = self.secret.to_bytes(32, 'big')
+        prefix = b'\xef' if testnet else b'\x80'
+        suffix = b'\x01' if compressed else b''
+        return encode_base58_checksum(prefix + secret_bytes + suffix)
+
+    # TBD
+    # @classmethod
+    # def from_wif(self, wif):
+    # !! needs either address, SEC, or PublicKey argument to instantiate
+    #      PrivateKey
