@@ -9,13 +9,58 @@ Programming Bitcoin, O'Reilly Media Inc, March 2019. See
 https://github.com/jimmysong/programmingbitcoin
 
 """
+
 from collections import namedtuple
 from hashlib import sha256
 from io import BytesIO
-
 import hmac
 
-from helper import encode_base58_checksum, hash160
+from helper import encode_base58_checksum, decode_base58_checksum, hash160
+
+
+ECCProfile = namedtuple('ECCProfile', ['name', 'P', 'A', 'B', 'Gx', 'Gy', 'N'])
+"""(namedtuple): Elliptic curve cryptography profile type, containing constants
+needed to define a curve over a finite field, and to create a group to relate
+public and private keys.
+
+Note: Attributes of namedtuple and subclasses are not reassignable, and new
+attributes may not be added.
+
+Attributes:
+    name (str): name of profile
+    P (int):    prime, order of finite field
+    A (int):    first constant of elliptic curve
+    B (int):    second constant of elliptic curve
+    Gx (int):   x coordinate of group generator point on elliptic curve
+    Gy (int):   y coordinate of group generator point on elliptic curve
+    N (int):    order of group
+
+"""
+
+SECP256K1 = ECCProfile(
+    name='secp256k1', P=2**256 - 2**32 - 977, A=0, B=7,
+    Gx=0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798,
+    Gy=0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8,
+    N=0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141)
+"""(ECCProfile): Elliptic curve cryptography profile for secp256k1, the curve
+used in Bitcoin.
+
+"""
+
+# redefine ECCProfile.__repr__
+def __repr__(self):
+    """Generates string representation of an Elliptic Curve Cryptography
+    profile of constants.
+
+    """
+    fmt = "ECCProfile(name={}, P={:#0x}, A={}, B={}, G=({:#0x}, "+\
+        "{:#0x}) N={:#0x})"
+    return fmt.format(self.name, self.P, self.A, self.B,
+                      self.Gx, self.Gy, self.N)
+
+
+setattr(ECCProfile, '__repr__', __repr__)
+__repr__ = None  # Make uncallable outside ECCProfile
 
 
 class FinFieldElem:
@@ -139,7 +184,7 @@ class FinFieldElem:
         """Exponentiates a finite field element.
 
         Args:
-            other (int): exponent (only base needs to be inside the field)
+            exponent (int): only base needs to be inside the field
 
         Returns:
             self.__class__: product of elements
@@ -189,7 +234,7 @@ class FinFieldElem:
         """Scalar multiplication of finite field element, from right to left.
 
         Args:
-            coefficient (int): scalar to multiply EC point
+            coefficient (int): scalar to multiply EC point, need not be in field
 
         Returns:
             self.__class__: product of field element and coefficient
@@ -227,20 +272,20 @@ class ECPoint:
     the infinity point. n + 1 is the order of the group (see __rmul__.)
 
     Attributes:
-        a (int/FinFieldElem): first constant
-        b (int/FinFieldElem): second constant
-        x (int/FinFieldElem): x coordinate
-        y (int/FinFieldElem): y coordinate
+        a (int): first constant
+        b (int): second constant
+        x (FinFieldElem): x coordinate
+        y (FinFieldElem): y coordinate
 
     """
     def __init__(self, x, y, a, b):
         """Instantiate an ECPoint object.
 
         Args:
-            a (int/FinFieldElem): first constant
-            b (int/FinFieldElem): second constant
-            x (int/FinFieldElem): x coordinate
-            y (int/FinFieldElem): y coordinate
+            a (int): first constant
+            b (int): second constant
+            x (FinFieldElem): x coordinate
+            y (FinFieldElem): y coordinate
 
        """
         # No need to evaluate infinity point (None, None)
@@ -373,37 +418,6 @@ class ECPoint:
         return product
 
 
-ECCProfile = namedtuple('ECCProfile', ['name', 'P', 'A', 'B', 'Gx', 'Gy', 'N'])
-"""(namedtuple): Elliptic curve cryptography profile type, containing constants
-needed to define a curve over a finite field, and to create a group to relate
-public and private keys.
-
-Note: Attributes of namedtuple and subclasses are not reassignable, and new
-attributes may not be added.
-
-Attributes:
-    name (str): name of profile
-    P (int):    prime, order of finite field
-    A (int):    first constant of elliptic curve
-    B (int):    second constant of elliptic curve
-    Gx (int):   x coordinate of group generator point on elliptic curve
-    Gy (int):   y coordinate of group generator point on elliptic curve
-    N (int):    order of group
-
-"""
-
-
-SECP256K1 = ECCProfile(
-    name='secp256k1', P=2**256 - 2**32 - 977, A=0, B=7,
-    Gx=0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798,
-    Gy=0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8,
-    N=0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141)
-"""(ECCProfile): Elliptic curve cryptography profile for secp256k1, the curve
-used in Bitcoin.
-
-"""
-
-
 class S256FieldElem(FinFieldElem):
     """A secp256k1 finite field element.
 
@@ -515,24 +529,9 @@ class S256Point(ECPoint):
             S256Point: product of point and coefficient
 
         """
-        # Scalar * N = 0, so only consider scalar mod N
+        # N * any point = 0(identity,) so only consider scalar mod N
         coef = coefficient % self.N
         return super().__rmul__(coef)
-
-
-# ECCProfile.__repr__
-def __repr__(self):
-    """Generates string representation of an Elliptic Curve Cryptography
-    profile of constants.
-
-    """
-    return "ECCProfile(name={}, P={:x}, A={:x}, B={:x}, G={}, N={:x})".format(
-        self.name, self.P, self.A, self.B,
-        S256Point(self.Gx, self.Gy), self.N).zfill(64)
-
-
-setattr(ECCProfile, '__repr__', __repr__)
-__repr__ = None  # Make uncallable outside ECCProfile
 
 
 class PublicKey(S256Point):
@@ -640,7 +639,7 @@ class PublicKey(S256Point):
                 self.y.num.to_bytes(32, 'big')
 
     @classmethod
-    def from_sec(self, sec_bin):
+    def from_sec(cls, sec_bin):
         """Parses a public key from a SEC-formatted byte sequence.
 
         See PublicKey.sec for description of SEC encoding format.
@@ -653,20 +652,21 @@ class PublicKey(S256Point):
 
         """
         compressed = True
-        if sec[0] == 0x04:  # b'\x04'
+        if sec_bin[0] == 0x04:  # b'\x04'
             compressed = False
-        elif sec[0] == 0x02:  # b'\x02'
+        elif sec_bin[0] == 0x02:  # b'\x02'
             y_even = True
-        elif sec[0] == 0x03:  # b'\x03'
+        elif sec_bin[0] == 0x03:  # b'\x03'
             y_even = False
         else:
-            raise ValueError("Invalid SEC prefix byte of {:x}".format(sec[0]))
-        x = S256FieldElem(int.from_bytes(sec[1:33], 'big'))
+            raise ValueError(
+                "Invalid SEC prefix byte of {:x}".format(sec_bin[0]))
+        x = S256FieldElem(int.from_bytes(sec_bin[1:33], 'big'))
         if not compressed:
             return S256Point(
-                x=x, y=S256FieldElem(int.from_bytes(sec[33:65], 'big')))
+                x=x, y=S256FieldElem(int.from_bytes(sec_bin[33:65], 'big')))
         # right side of the equation y**2 = x**3 + 7
-        alpha = x**3 + S256FieldElem(self.B)
+        alpha = x**3 + S256FieldElem(super().B)
         # solve for left side
         beta = alpha.sqrt()
         if beta.num % 2 == 0:
@@ -675,7 +675,7 @@ class PublicKey(S256Point):
         else:
             even_beta = S256FieldElem(S256FieldElem.P - beta.num)
             odd_beta = beta
-        return self.__init__(x=x, y=even_beta if y_even else odd_beta)
+        return cls(x=x, y=even_beta if y_even else odd_beta)
 
     def address(self, compressed=True, testnet=False):
         """Encodes a public key in Bitcoin address format.
@@ -683,7 +683,7 @@ class PublicKey(S256Point):
         Bitcoin address format is a shortened and obfuscated form of a public
         key, used as a party identifier in transactions.
 
-        Bitcoin addresses are serialized as follows:
+        Bitcoin addresses are encoded as follows:
             1. For mainnet prefix 0x00, testnet 0x6f
             2. Create a hash160 of the public key (key in SEC format > sha256 >
                 ripemd160)
@@ -691,13 +691,13 @@ class PublicKey(S256Point):
             4. Take first four bytes of hash256 (sha256 twice) of #3
             5. Encode #3 and #4 in base58
 
-        Note: Given the variables above, up to 4 addresses could be derived
-        from a single public key.
+        Note: Given the variables testnet and compressed, up to 4 addresses
+        could be derived from a single public key.
 
         Args:
             compressed (bool): use compressed SEC format if True, otherwise
                 uncompressed
-            testnet (bool): address for testnet if True, otherwise for mainnet
+            testnet (bool): address for testnet if True, for mainnet if False
 
         Returns:
             str: address value in base 58 encoded string
@@ -705,9 +705,10 @@ class PublicKey(S256Point):
         """
         h160 = hash160(self.sec(compressed))
         prefix = b'\x6f' if testnet else b'\x00'
+        # Resulting address is 21 bytes
         return encode_base58_checksum(prefix + h160)
 
-    # TBD
+    # TBD - cannot reverse due to hashing, but can get prefix to check network
     # @classmethod
     # def from_address(address):
 
@@ -819,9 +820,9 @@ class PrivateKey:
     """Representation of a secp256k1 private key.
 
     Attributes:
-        N (int):             secp256k1 group order
-        G (S256Point):       secp256k1 group generator point
-        secret (int):        private key; e in eG = P
+        N (int):           secp256k1 group order
+        G (S256Point):     secp256k1 group generator point
+        secret (int):      private key; e in eG = P
         point (S256Point): public key; P in eG = P
 
     """
@@ -864,12 +865,16 @@ class PrivateKey:
         https://en.bitcoin.it/wiki/Elliptic_Curve_Digital_Signature_Algorithm.
 
         Args:
-            z (int): expects a 32-byte sha256 hash of the data to sign
+            z (int): expects a 32-byte sha256 hash of the data to sign (?)...
+                see comment below
 
         Returns:
             Signature: contains s, and the r used in its calculation
 
         """
+        # TBD: Song p.64 calls this the "signature hash" - assuming hash256?
+        if type(z) is bytes:
+            z = int.from_bytes(z, 'big')
         # k needs to be sufficiently random, but also unique per signature
         k = self.deterministic_k(z)
         # r is the x coordinate of point kG
@@ -940,14 +945,55 @@ class PrivateKey:
             5. Take first 4 bytes of hash256 (sha256 twice) of #4
             6. Encode #4 and #5 in base 58.
 
+        Args:
+            compressed (bool): compressed SEC format used if True,
+                otherwise uncompressed
+            testnet (bool): for testnet if True, for mainnet if False
+
+        Returns:
+            str: encoded private key
+
         """
         secret_bytes = self.secret.to_bytes(32, 'big')
         prefix = b'\xef' if testnet else b'\x80'
         suffix = b'\x01' if compressed else b''
         return encode_base58_checksum(prefix + secret_bytes + suffix)
 
-    # TBD
-    # @classmethod
-    # def from_wif(self, wif):
-    # !! needs either address, SEC, or PublicKey argument to instantiate
-    #      PrivateKey
+    @classmethod
+    def from_wif(cls, wif_bin):
+        """Decodes a private key from WIF.
+
+        WIF, or Wallet Import Format, is Bitcoin's current means of serializing
+        private keys. See PrivateKey.wif for more info.
+
+        Args:
+            wif_bin (bytes): encoded private key
+
+        Returns:
+            self.__class__: new deserialized private key
+
+        """
+        combined = decode_base58_checksum(wif_bin)
+        # note: slices of bytes are bytes, but single elements are ints
+        if combined[0] == 0xef:
+            testnet = True
+        elif combined[0] == 0x80:
+            testnet = False
+        else:
+            raise SyntaxError(f"invalid prefix: 0x{combined[0]:x}")
+        if len(combined) == 34:
+            compressed = True
+        elif len(combined) == 33:
+            compressed = False
+        else:
+            raise SyntaxError(f"invalid data length: {len(combined)}")
+        if compressed:
+            if combined[-1:] != b'\x01':
+                raise SyntaxError(f"invalid suffix: {combined[-1:]}")
+            secret_bin = combined[1:-1]
+        else:
+            secret_bin = combined[1:]
+        # TBD: how are compressed and testnet communicated beyond this function?
+        #   verified? Need they be? testnet at least could be checked against a
+        #   supplied address.
+        return cls(int.from_bytes(secret_bin, 'big'))

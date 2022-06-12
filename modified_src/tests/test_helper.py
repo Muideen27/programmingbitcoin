@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""`test_helper.py` - Unit test module for helper.py
+"""`test_helper` - Unit test module for helper.py
 
 Modified from original code base developed by Jimmy Song for his book
 Programming Bitcoin, O'Reilly Media Inc, March 2019. See
@@ -9,11 +9,21 @@ https://github.com/jimmysong/programmingbitcoin
 
 from unittest import TestCase
 from unittest import main
+import string
 
-from helper import little_endian_to_int, int_to_little_endian
+from helper import (
+    hash160,
+    hash256,
+    encode_base58,
+    encode_base58_checksum,
+    decode_base58,
+    decode_base58_checksum,
+    little_endian_to_int,
+    int_to_little_endian,
+)
 
 
-class TestHelper(TestCase):
+class SongTestHelper(TestCase):
     """Song's unit tests for helper module methods.
 
     """
