@@ -41,7 +41,7 @@ class TxFetcher:
             else:
                 tx = Tx.parse(BytesIO(raw), testnet=testnet)
             if tx.id() != tx_id:  # <1>
-                raise ValueError('not the same id: {} vs {}'.format(tx.id(), 
+                raise ValueError('not the same id: {} vs {}'.format(tx.id(),
                                   tx_id))
             cls.cache[tx_id] = tx
         cls.cache[tx_id].testnet = testnet
@@ -108,15 +108,27 @@ class Tx:
         '''Takes a byte stream and parses the transaction at the start
         return a Tx object
         '''
-        # s.read(n) will return n bytes
-        # version is an integer in 4 bytes, little-endian
+        # Exercise 1: parse version only
+        version = int.from_bytes(s.read(4), 'little')
+        # Exercise 2: parse tx_ins
         # num_inputs is a varint, use read_varint(s)
+        num_inputs = read_varint(s)
         # parse num_inputs number of TxIns
+        tx_ins = []
+        for _ in range(0, num_inputs):
+            tx_ins.append(TxIn.parse(s))
+        # Exercise 3: parse tx_outs
         # num_outputs is a varint, use read_varint(s)
+        num_outputs = read_varint(s)
         # parse num_outputs number of TxOuts
+        tx_outs = []
+        for _ in range(0, num_outputs):
+            tx_outs.append(TxOut.parse(s))
+        # Exercise 4: parse locktime
         # locktime is an integer in 4 bytes, little-endian
+        locktime = int.from_bytes(s.read(4), 'little')
         # return an instance of the class (see __init__ for args)
-        raise NotImplementedError
+        return cls(version, tx_ins, tx_outs, locktime, testnet)
 
     # tag::source6[]
     def serialize(self):
@@ -132,13 +144,19 @@ class Tx:
         return result
     # end::source6[]
 
-    def fee(self):
+    def fee(self, testnet=False):
         '''Returns the fee of this transaction in satoshi'''
+        # Exercise 6
         # initialize input sum and output sum
+        input_sum, output_sum = 0, 0
         # use TxIn.value() to sum up the input amounts
+        for tx_in in self.tx_ins:
+            input_sum += tx_in.value(testnet)
         # use TxOut.amount to sum up the output amounts
+        for tx_out in self.tx_outs:
+            output_sum += tx_out.amount
         # fee is input sum - output sum
-        raise NotImplementedError
+        return input_sum - output_sum
 
 
 # tag::source2[]
@@ -164,12 +182,20 @@ class TxIn:
         '''Takes a byte stream and parses the tx_input at the start
         return a TxIn object
         '''
+        # Exercise 2:
         # prev_tx is 32 bytes, little endian
+        # prev tx ID (hash of contents)
+        # TBD: is it serialized in reverse byte order due to network byte order
+        #   generally being little endian?
+        prev_tx = s.read(32)[::-1]
         # prev_index is an integer in 4 bytes, little endian
+        prev_index = int.from_bytes(s.read(4), 'little')
         # use Script.parse to get the ScriptSig
+        script_sig = Script.parse(s)
         # sequence is an integer in 4 bytes, little-endian
+        sequence = int.from_bytes(s.read(4), 'little')
         # return an instance of the class (see __init__ for args)
-        raise NotImplementedError
+        return cls(prev_tx, prev_index, script_sig, sequence)
 
     # tag::source5[]
     def serialize(self):
@@ -217,10 +243,13 @@ class TxOut:
         '''Takes a byte stream and parses the tx_output at the start
         return a TxOut object
         '''
+        # Exercise 3
         # amount is an integer in 8 bytes, little endian
+        amount = int.from_bytes(s.read(8), 'little')
         # use Script.parse to get the ScriptPubKey
+        script_pubkey = Script.parse(s)
         # return an instance of the class (see __init__ for args)
-        raise NotImplementedError
+        return cls(amount, script_pubkey)
 
     # tag::source4[]
     def serialize(self):  # <1>
