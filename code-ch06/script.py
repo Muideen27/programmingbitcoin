@@ -128,6 +128,7 @@ class Script:
                         LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
                         return False
             else:
+                # bytes objects: serializations like SEC/DER, or encode_num(int)
                 stack.append(cmd)  # <7>
         if len(stack) == 0:
             return False  # <8>

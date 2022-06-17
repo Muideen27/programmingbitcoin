@@ -57,6 +57,16 @@ def op_0(stack):
     return True
 # end::source3[]
 
+# Exercise 3:
+# Note: op_pushdata1 and op_pushdata2 implemented as part of Song's
+#   Script.serialize and .parse - there is no need to have them as callable
+#   commands, as when building a Script object directly (as opposed to
+#   (de)serializing,) one can simply add bytes sequences directly as commands:
+#   point SEC, signature DER, encode_num(n) for ints, etc. Any commands that
+#   are not integers will be interpreted as elements and pushed to the stack.
+# def op_pushdata1(stack, data):
+# def op_pushdata2(stack, data):
+# def op_pushdata4(stack, data):
 
 def op_1negate(stack):
     stack.append(encode_num(-1))
@@ -644,10 +654,15 @@ def op_sha256(stack):
 
 
 def op_hash160(stack):
+    # Exercise 1:
     # check that there's at least 1 element on the stack
+    if len(stack) < 1:
+        return False
     # pop off the top element from the stack
+    element = stack.pop()
     # push a hash160 of the popped off element to the stack
-    raise NotImplementedError
+    stack.append(hash160(element))
+    return True
 
 
 # tag::source2[]
@@ -661,15 +676,23 @@ def op_hash256(stack):
 
 
 def op_checksig(stack, z):
+    # Exercise 2
     # check that there are at least 2 elements on the stack
+    if len(stack) < 2:
+        return False
     # the top element of the stack is the SEC pubkey
+    sec = stack.pop()
     # the next element of the stack is the DER signature
     # take off the last byte of the signature as that's the hash_type
+    # TBD: why remove last byte? Not mentioned in DER format
+    der = stack.pop()[:-1]
     # parse the serialized pubkey and signature into objects
+    pubkey = S256Point.parse(sec)
+    sig = Signature.parse(der)
     # verify the signature using S256Point.verify()
     # push an encoded 1 or 0 depending on whether the signature verified
-    raise NotImplementedError
-
+    stack.append(encode_num(1 if pubkey.verify(z, sig) else 0))
+    return True
 
 def op_checksigverify(stack, z):
     return op_checksig(stack, z) and op_verify(stack)
@@ -738,6 +761,10 @@ class OpTest(TestCase):
 
 OP_CODE_FUNCTIONS = {
     0: op_0,
+    # (see note on op_pushdataX in opcode function definitions)
+    # 76: op_pushdata1,
+    # 77: op_pushdata2,
+    # 78: op_pushdata4,
     79: op_1negate,
     81: op_1,
     82: op_2,
