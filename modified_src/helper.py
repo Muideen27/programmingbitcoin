@@ -4,9 +4,12 @@
 Contains methods to assist other modules in (de)serialization, hashing,
  and variable type conversion.
 
-Modified from original repository developed by Jimmy Song for his book
-Programming Bitcoin, O'Reilly Media Inc, March 2019. See
-https://github.com/jimmysong/programmingbitcoin
+Part of an educational mockup of Bitcoin Core; adapted from original
+repository developed by Jimmy Song, et al:
+
+    https://github.com/jimmysong/programmingbitcoin
+
+for his book Programming Bitcoin, O'Reilly Media Inc, March 2019.
 
 """
 
@@ -54,16 +57,17 @@ def encode_base58(b):
         str: int value in base 58 representation
 
     """
+    # TBD: re-establish that this initial safety check needed
     if b == b'':
         return ''
-    leading_nulls = 0
+    leading_null_bytes = 0
     for c in b:
         if c == 0x00:
-            leading_nulls += 1
+            leading_null_bytes += 1
         else:
             break
     num = int.from_bytes(b, 'big')
-    prefix = '1' * leading_nulls
+    prefix = '1' * leading_null_bytes
     result = ''
     while num > 0:
         num, mod = divmod(num, 58)
@@ -93,13 +97,14 @@ def decode_base58(s):
     Base 58 numerals are the set of digits + uppercase + lowercase - '01Ol'.
 
     Args:
-        b (bytes): big endian sequence to encode
+        s (str): base 58 numeral string
 
     Returns:
-        str: int value in base 58 representation
+        bytes: vbig endian byte sequence
 
     """
-    if s == "":
+    # TBD: re-establish that this initial safety check needed
+    if s == '':
         return b''
     leading_nulls = 0
     for c in s:
@@ -117,7 +122,9 @@ def decode_base58(s):
     return num.to_bytes(byte_ct, 'big')
 
 
-# TBD: Song's later use of decode_base58 assumes use with addresses
+# TBD: Song's later use of decode_base58 assumes use with addresses,
+#     returning combined[1:-4], instead of the combined[1:-4] here. Why
+#     the trimming of the first byte?
 def decode_base58_checksum(s):
     """Decodes a base 58 checksum string and verifies checksum.
 
@@ -134,22 +141,65 @@ def decode_base58_checksum(s):
     checksum = combined[-4:]
     data = combined[:-4]
     if hash256(data)[:4] != checksum:
-        raise ValueError('invalid checksum: {} {}'.format(
-            checksum.hex(), hash256(data)[:4].hex()))
+        raise ValueError('invalid checksum: '
+                         f'{checksum.hex()} {hash256(data)[:4].hex()}')
     return data
 
 
-# TBD: replace with from_bytes, as to_bytes is already frequently used
-def little_endian_to_int(b):
-    """Converts a little-endian byte sequence to an integer.
+# Note: little_endian_to_int replaced with int.from_bytes(b, 'little'),
+#   as to_bytes is already frequently used in codebase
+
+
+# Note: int_to_little_endian replaced with n.to_bytes(length, 'little'),
+#   as n.to_bytes(length, 'big') is already frequently used in codebase
+
+
+def encode_varint(i):
+    """Encodes an integer as a varint.
+
+    varints, or variable integers, are a means of serializing unsigned values
+    in a variable byte count, depending on the value.
+
+    Args:
+        i (int): value to encode
+
+    Returns:
+        bytes: varint encoded value
 
     """
-    return int.from_bytes(b, 'little')
+    if i < 0:
+        raise ValueError(f"only unsigned integers can be encoded")
+    elif i < 0xfd:
+        return bytes([i])
+    elif i < 0x10000:
+        return b'\xfd' + i.to_bytes(2, 'little')
+    elif i < 0x100000000:
+        return b'\xfe' + i.to_bytes(4, 'little')
+    elif i < 0x10000000000000000:
+        return b'\xff' + i.to_bytes(8, 'little')
+    else:
+        raise ValueError(f"integer too large to encode: {i}")
 
 
-# TBD: replace with to_bytes, as to_bytes(x, 'big') is already frequently used
-def int_to_little_endian(n, length):
-    """Converts an integer to a little-endian byte sequence.
+def read_varint(s):
+    """Reads and decodes a variable integer from a stream.
+
+    First byte of the varint, if >= 253, serves as a flag to indicate
+    the byte count of the following encoding.
+
+    Args:
+        s (_io.*): stream to read
+
+    Returns:
+        i (int): decoded value
 
     """
-    return n.to_bytes(length, 'little')
+    i = s.read(1)[0]
+    if i == 0xfd:
+        return int.from_bytes(s.read(2), 'little')
+    elif i == 0xfe:
+        return int.from_bytes(s.read(4), 'little')
+    elif i == 0xff:
+        return int.from_bytes(s.read(8), 'little')
+    else:
+        return i

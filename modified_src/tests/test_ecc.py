@@ -1,9 +1,12 @@
 #!/usr/bin/python3
 """`test_ecc` - Unit test module for ecc.py
 
-Modified from original code base developed by Jimmy Song for his book
-Programming Bitcoin, O'Reilly Media Inc, March 2019. See
-https://github.com/jimmysong/programmingbitcoin
+Part of an educational mockup of Bitcoin Core; adapted from original
+repository developed by Jimmy Song, et al:
+
+    https://github.com/jimmysong/programmingbitcoin
+
+for his book Programming Bitcoin, O'Reilly Media Inc, March 2019.
 
 """
 
@@ -248,10 +251,10 @@ class SongTestPublicKey(TestCase):
     def test_sec(self):
         coefficient = 999**3
         uncompressed = '049d5ca49670cbe4c3bfa84c96a8c87df086c6ea6a24ba6b809c'+\
-        '9de234496808d56fa15cc7f3d38cda98dee2419f415b7513dde1301f8643cd9245a'+\
-        'ea7f3f911f9'
+            '9de234496808d56fa15cc7f3d38cda98dee2419f415b7513dde1301f8643cd9'+\
+            '245aea7f3f911f9'
         compressed = '039d5ca49670cbe4c3bfa84c96a8c87df086c6ea6a24ba6b809c9d'+\
-        'e234496808d5'
+            'e234496808d5'
         point = coefficient * PublicKey.G
         pubkey = PublicKey(x=point.x, y=point.y)
         self.assertEqual(pubkey.sec(compressed=False),
@@ -260,10 +263,10 @@ class SongTestPublicKey(TestCase):
                          bytes.fromhex(compressed))
         coefficient = 123
         uncompressed = '04a598a8030da6d86c6bc7f2f5144ea549d28211ea58faa70ebf'+\
-        '4c1e665c1fe9b5204b5d6f84822c307e4b4a7140737aec23fc63b65b35f86a10026'+\
-        'dbd2d864e6b'
+            '4c1e665c1fe9b5204b5d6f84822c307e4b4a7140737aec23fc63b65b35f86a'+\
+            '10026dbd2d864e6b'
         compressed = '03a598a8030da6d86c6bc7f2f5144ea549d28211ea58faa70ebf4c'+\
-        '1e665c1fe9b5'
+            '1e665c1fe9b5'
         point = coefficient * PublicKey.G
         pubkey = PublicKey(x=point.x, y=point.y)
         self.assertEqual(pubkey.sec(compressed=False),
@@ -272,10 +275,10 @@ class SongTestPublicKey(TestCase):
                          bytes.fromhex(compressed))
         coefficient = 42424242
         uncompressed = '04aee2e7d843f7430097859e2bc603abcc3274ff8169c1a469fe'+\
-        'e0f20614066f8e21ec53f40efac47ac1c5211b2123527e0e9b57ede790c4da1e72c'+\
-        '91fb7da54a3'
+            'e0f20614066f8e21ec53f40efac47ac1c5211b2123527e0e9b57ede790c4da'+\
+            '1e72c91fb7da54a3'
         compressed = '03aee2e7d843f7430097859e2bc603abcc3274ff8169c1a469fee0'+\
-        'f20614066f8e'
+            'f20614066f8e'
         point = coefficient * PublicKey.G
         pubkey = PublicKey(x=point.x, y=point.y)
         self.assertEqual(pubkey.sec(compressed=False),
@@ -517,6 +520,7 @@ class TestECPoint(TestCase):
         a = ECPoint(x=-1, y=-1, a=5, b=7)
         # non-vertical tangent, doubling of point is on the curve
         self.assertEqual(a + a, ECPoint(x=18, y=77, a=5, b=7))
+
 """
 
 

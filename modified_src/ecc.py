@@ -1,12 +1,15 @@
 #!/usr/bin/python3
 """`ecc` - Elliptic Curve Cryptography module
 
-Contains classes and constants necessary for implementing an educational mockup
-of the secp256k1 ECC and ECDSA used in Bitcoin circa 2019.
+Contains classes and constants necessary for implementing the secp256k1 ECC
+and ECDSA.
 
-Modified from original repository developed by Jimmy Song for his book
-Programming Bitcoin, O'Reilly Media Inc, March 2019. See
-https://github.com/jimmysong/programmingbitcoin
+Part of an educational mockup of Bitcoin Core; adapted from original
+repository developed by Jimmy Song, et al:
+
+    https://github.com/jimmysong/programmingbitcoin
+
+for his book Programming Bitcoin, O'Reilly Media Inc, March 2019.
 
 """
 
@@ -22,9 +25,6 @@ ECCProfile = namedtuple('ECCProfile', ['name', 'P', 'A', 'B', 'Gx', 'Gy', 'N'])
 """(namedtuple): Elliptic curve cryptography profile type, containing constants
 needed to define a curve over a finite field, and to create a group to relate
 public and private keys.
-
-Note: Attributes of namedtuple and subclasses are not reassignable, and new
-attributes may not be added.
 
 Attributes:
     name (str): name of profile
@@ -43,7 +43,7 @@ SECP256K1 = ECCProfile(
     Gy=0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8,
     N=0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141)
 """(ECCProfile): Elliptic curve cryptography profile for secp256k1, the curve
-used in Bitcoin.
+used in Bitcoin Core cryptography.
 
 """
 
@@ -53,10 +53,9 @@ def __repr__(self):
     profile of constants.
 
     """
-    fmt = "ECCProfile(name={}, P={:#0x}, A={}, B={}, G=({:#0x}, "+\
-        "{:#0x}) N={:#0x})"
-    return fmt.format(self.name, self.P, self.A, self.B,
-                      self.Gx, self.Gy, self.N)
+    return (f'ECCProfile(name={self.name}, P={self.P:#0x}, '
+            f'A={self.A}, B={self.B}, '
+            f'G=({self.Gx:#0x}, {self.Gy:#0x}) N={self.N:#0x})')
 
 
 setattr(ECCProfile, '__repr__', __repr__)
@@ -88,11 +87,9 @@ class FinFieldElem:
         if prime < 3:
             raise ValueError('prime must be greater than 2')
         # While it would be costly to validate prime as a prime number,
-        #    ideally that would also be enforced with a ValueError
+        #    ideally that would also be enforced as a class invariant
         if num >= prime or num < 0:
-            raise ValueError(
-                'num {} not in field range 0 to {}'.format(
-                    num, prime - 1))
+            raise ValueError(f'num {num} not in field range 0 to {prime - 1}')
         self.num = num
         self.prime = prime
 
@@ -103,7 +100,7 @@ class FinFieldElem:
             (str): developer-oriented representation of self
 
         """
-        return '{}_{}({})'.format(self.__class__, self.prime, self.num)
+        return f'{self.__class__}_{self.prime}({self.num})'
 
     def __eq__(self, other):
         """Evaulates equality of finite field elements.
@@ -290,7 +287,7 @@ class ECPoint:
        """
         # No need to evaluate infinity point (None, None)
         if x is not None and y is not None and y**2 != x**3 + a * x + b:
-            raise ValueError('({}, {}) is not on the curve'.format(x, y))
+            raise ValueError(f'({x}, {y}) is not on the curve')
         self.a = a
         self.b = b
         self.x = x
@@ -306,8 +303,7 @@ class ECPoint:
         if self.x is None:
             return 'ECPoint(infinity)'
         else:
-            return 'ECPoint({},{})_{}_{}'.format(self.x, self.y,
-                                                 self.a, self.b)
+            return f'ECPoint({self.x},{self.y})_{self.a}_{self.b}'
 
     def __eq__(self, other):
         """Evaulates equality of elliptic curve points.
@@ -366,7 +362,7 @@ class ECPoint:
         """
         if self.a != other.a or self.b != other.b:
             raise TypeError(
-                'Points {}, {} are not on the same curve'.format(self, other))
+                f'Points {self}, {other} are not on the same curve')
 
         # Any point added to identity is itself
         if self.x is None:
@@ -443,7 +439,7 @@ class S256FieldElem(FinFieldElem):
             str: developer-oriented representation of self
 
         """
-        return '{:x}'.format(self.num).zfill(64)
+        return f'{self.num:x}'.zfill(64)
 
     def sqrt(self):
         """Derives square root of a secp256k1 finite field element.
@@ -516,7 +512,7 @@ class S256Point(ECPoint):
         if self.x is None:
             return 'S256Point(infinity)'
         else:
-            return 'S256Point({}, {})'.format(self.x, self.y)
+            return f'S256Point({self.x}, {self.y})'
 
     def __rmul__(self, coefficient):
         """Scalar multiplication of secp256k1 elliptic curve point, from right
@@ -557,7 +553,7 @@ class PublicKey(S256Point):
             (str): developer-oriented representation of self
 
         """
-        return 'PublicKey({}, {})'.format(self.x, self.y)
+        return f'PublicKey({self.x}, {self.y})'
 
     def verify(self, z, sig):
         """Verifies a secp256k1 ECDSA signature made with the same public key.
@@ -652,15 +648,15 @@ class PublicKey(S256Point):
 
         """
         compressed = True
-        if sec_bin[0] == 0x04:  # b'\x04'
+        # slices of bytes are bytes, but single elements are ints
+        if sec_bin[0] == 0x04:
             compressed = False
-        elif sec_bin[0] == 0x02:  # b'\x02'
+        elif sec_bin[0] == 0x02:
             y_even = True
-        elif sec_bin[0] == 0x03:  # b'\x03'
+        elif sec_bin[0] == 0x03:
             y_even = False
         else:
-            raise ValueError(
-                "Invalid SEC prefix byte of {:x}".format(sec_bin[0]))
+            raise ValueError('Invalid SEC prefix byte of {sec_bin[0]:x}')
         x = S256FieldElem(int.from_bytes(sec_bin[1:33], 'big'))
         if not compressed:
             return S256Point(
@@ -797,22 +793,22 @@ class Signature:
         s = BytesIO(signature_bin)
         compound = s.read(1)[0]
         if compound != 0x30:
-            raise SyntaxError("Bad Signature")
+            raise SyntaxError('Bad Signature')
         length = s.read(1)[0]
         if length + 2 != len(signature_bin):
-            raise SyntaxError("Bad Signature Length")
+            raise SyntaxError('Bad Signature Length')
         marker = s.read(1)[0]
         if marker != 0x02:
-            raise SyntaxError("Bad Signature")
+            raise SyntaxError('Bad Signature')
         rlength = s.read(1)[0]
         r = int.from_bytes(s.read(rlength), 'big')
         marker = s.read(1)[0]
         if marker != 0x02:
-            raise SyntaxError("Bad Signature")
+            raise SyntaxError('Bad Signature')
         slength = s.read(1)[0]
         s = int.from_bytes(s.read(slength), 'big')
         if len(signature_bin) != 6 + rlength + slength:
-            raise SyntaxError("Signature too long")
+            raise SyntaxError('Signature too long')
         return cls(r, s)
 
 
@@ -865,14 +861,15 @@ class PrivateKey:
         https://en.bitcoin.it/wiki/Elliptic_Curve_Digital_Signature_Algorithm.
 
         Args:
-            z (int): expects a 32-byte sha256 hash of the data to sign (?)...
-                see comment below
+            z (int): TBD: expects a 32-byte sha256 hash of the data to sign
+                (?)... see ch07
 
         Returns:
             Signature: contains s, and the r used in its calculation
 
         """
         # TBD: Song p.64 calls this the "signature hash" - assuming hash256?
+        #    see ch07
         if type(z) is bytes:
             z = int.from_bytes(z, 'big')
         # k needs to be sufficiently random, but also unique per signature
@@ -964,7 +961,7 @@ class PrivateKey:
         """Decodes a private key from WIF.
 
         WIF, or Wallet Import Format, is Bitcoin's current means of serializing
-        private keys. See PrivateKey.wif for more info.
+        private keys. See PrivateKey.wif for serialization format.
 
         Args:
             wif_bin (bytes): encoded private key
@@ -974,22 +971,22 @@ class PrivateKey:
 
         """
         combined = decode_base58_checksum(wif_bin)
-        # note: slices of bytes are bytes, but single elements are ints
+        # slices of bytes are bytes, but single elements are ints
         if combined[0] == 0xef:
             testnet = True
         elif combined[0] == 0x80:
             testnet = False
         else:
-            raise SyntaxError(f"invalid prefix: 0x{combined[0]:x}")
+            raise SyntaxError(f'invalid prefix: 0x{combined[0]:x}')
         if len(combined) == 34:
             compressed = True
         elif len(combined) == 33:
             compressed = False
         else:
-            raise SyntaxError(f"invalid data length: {len(combined)}")
+            raise SyntaxError(f'invalid data length: {len(combined)}')
         if compressed:
             if combined[-1:] != b'\x01':
-                raise SyntaxError(f"invalid suffix: {combined[-1:]}")
+                raise SyntaxError(f'invalid suffix: {combined[-1:]}')
             secret_bin = combined[1:-1]
         else:
             secret_bin = combined[1:]
